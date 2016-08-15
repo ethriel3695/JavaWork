@@ -8,7 +8,16 @@ import java.sql.Statement;
 import static java.lang.System.*;
 import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Scanner;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.TimeUnit;
 
 /*
  * @author Reuben Ellis
@@ -118,10 +127,14 @@ public class AnimalDatabaseInteraction {
     
     private static int
             animalID = 0;
+    
+    private static ArrayList<String>
+            currentAnimals = new ArrayList<String>();
+    
     /**
      * @param args the command line arguments
      */
-    public static void main(String[] args) {
+    public static void main(String[] args) throws InterruptedException, ExecutionException {
         do
         {
             welcomePrompt();
@@ -131,21 +144,53 @@ public class AnimalDatabaseInteraction {
             try {
                 if (userSelection.equalsIgnoreCase("view"))
                 {
-                    viewAnimalFromDatabase();
-                }
-                else if (userSelection.equalsIgnoreCase("add"))
-                {
-                    addAnimalToDatabase();
-                }
+                    ExecutorService
+                        animalNamesList = Executors.newFixedThreadPool(4);
+                                        
+                    Callable<String> 
+                        animal1 = new animalDirectoryViewing();
+                    Callable<String> 
+                        animal2 = new animalDirectoryViewing();
+                    Callable<String> 
+                        animal3 = new animalDirectoryViewing();
+                    Callable<String> 
+                        animal4 = new animalDirectoryViewing();
+        
+                    animalNamesList.submit(animal1);
+                    animalNamesList.submit(animal2);
+                    animalNamesList.submit(animal3);
+                    animalNamesList.submit(animal4);
+                    
+                    try {
+                        boolean terminateAnimalViews = 
+                                animalNamesList.awaitTermination(2, 
+                                        TimeUnit.SECONDS);
+                    } catch (InterruptedException ex1)
+                    {
+                        System.out.println("Did not wait 2 seconds");
+                    } finally
+                    {
+                        if (!animalNamesList.isTerminated())
+                        {
+                            List<Runnable> streetAssignments = 
+                                    animalNamesList.shutdownNow();
+                        }
+                    }
+            }
+            else if (userSelection.equalsIgnoreCase("add"))
+            {
+                addAnimalToDatabase();
+            }
             } catch (SQLException se) {
                 out.println(se.getMessage());
             }
 
-            System.out.println("Please enter quit to end the program "
+            Thread.sleep(6000);
+            System.out.println("\nPlease enter quit to end the program "
                 + "\nor anything else to continue: ");
             input = userInput.nextLine();
-            
         }while (!input.equalsIgnoreCase("quit"));
+
     }
     
     private static void welcomePrompt()
@@ -176,74 +221,6 @@ public class AnimalDatabaseInteraction {
             input = add;
         }
         return input;
-    }
-    
-    private static void viewAnimalFromDatabase() throws SQLException
-    {
-        Connection
-                mySQLConnection = null;
-        PreparedStatement
-                secureStatement = null;
-        String animalQuery = "SELECT animalID, animalName, "
-                + "animalColor, numberOfLegs, animalUniqueClass FROM animal"
-                + " WHERE animalName = ?";
-        
-        System.out.println("Enter an animal name already in the wildlife"
-            + " reserve to see a full description: ");
-        
-        input = userInput.nextLine();
-        
-        do
-        {
-        try {
-            mySQLConnection = mySQLDatabaseConnection();
-
-            secureStatement = mySQLConnection.prepareStatement(animalQuery);
-
-            secureStatement.setString(1, input);
-            
-            ResultSet
-                    rs = secureStatement.executeQuery();
-            
-            if (!rs.first())
-            {
-                out.println("Animal does not exist in the wildlife reserve!");
-            }
-            else
-            {
-                do {
-                    animalID = rs.getInt("animalID");
-                    name = rs.getString("animalName");
-                    color = rs.getString("animalColor");
-                    legs = rs.getString("numberOfLegs");
-                    uniqueTrait = rs.getString("animalUniqueClass");
-
-                    out.println("Animal ID: " + animalID);
-                    out.println("Animal Name: " + name);
-                    out.println("Animal Color: " + color);
-                    out.println("Number of Legs: " + legs);
-                    out.println("Unique Class: " + uniqueTrait);
-                }while (rs.next());
-            }
-
-            
-        }catch (SQLException se){
-            out.println(se.getMessage());
-        } finally {
-            if (secureStatement != null) {
-                secureStatement.close();
-            }
-            
-            if (mySQLConnection != null) {
-                mySQLConnection.close();
-            }
-        }
-        
-        System.out.println("\nPlease enter done to return to the main page "
-            + "\nor an animal name to view details: ");
-        input = userInput.nextLine();
-        
-        }while(!input.equalsIgnoreCase("done"));
     }
     
     private static void addAnimalToDatabase() throws SQLException
@@ -309,7 +286,6 @@ public class AnimalDatabaseInteraction {
                 mySQLConnection.close();
             }
         }
-        
         
         System.out.println("\nPlease enter done to return to the main page "
             + "\nor anything to continue: ");
